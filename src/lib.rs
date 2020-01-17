@@ -1,10 +1,9 @@
 use std::str::FromStr;
 
 use pyo3::prelude::*;
-// use pyo3::wrap_pyfunction;
+use pyo3::wrap_pyfunction;
 // use pyo3::exceptions::TypeError as PyTypeError;
 use pyo3::exceptions::ValueError as PyValueError;
-use pyo3::wrap_pyfunction;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd)]
 enum LogLevels {
@@ -19,10 +18,12 @@ impl LogLevels {
     fn py_from_str(s: &str) -> PyResult<LogLevels> {
         match LogLevels::from_str(s) {
             Ok(v) => Ok(v),
-            Err(_) => return Err(PyValueError::py_err(format!(
-                "Error parsing log level '{}'",
-                s
-            )))
+            Err(_) => {
+                return Err(PyValueError::py_err(format!(
+                    "Error parsing log level '{}'",
+                    s
+                )))
+            }
         }
     }
 }
@@ -36,7 +37,7 @@ impl FromStr for LogLevels {
             "trace" => Ok(LogLevels::TRACE),
             "debug" => Ok(LogLevels::DEBUG),
             "info" => Ok(LogLevels::INFO),
-            "warn" => Ok(LogLevels::WARN),
+            "warning" => Ok(LogLevels::WARN),
             "error" => Ok(LogLevels::ERROR),
             _ => Err(()),
         }
@@ -52,11 +53,16 @@ struct Logger {
 #[pymethods]
 impl Logger {
     #[new]
-    fn new(obj: &PyRawObject, name: String, level: String) -> PyResult<()> {
+    fn new(obj: &PyRawObject, name: String, level: Option<String>) -> PyResult<()> {
         obj.init(Logger {
             name: name,
-            level: LogLevels::py_from_str(&level)?,
+            level: LogLevels::py_from_str(&level.unwrap_or("warning".to_string()))?,
         });
+        Ok(())
+    }
+
+    fn set_level(&mut self, level: String) -> PyResult<()> {
+        self.level = LogLevels::py_from_str(&level)?;
         Ok(())
     }
 
@@ -67,20 +73,40 @@ impl Logger {
         }
         Ok(())
     }
+
+    fn trace(&self, message: String) -> PyResult<()> {
+        return self.log(message, "trace".to_string());
+    }
+
+    fn debug(&self, message: String) -> PyResult<()> {
+        return self.log(message, "debug".to_string());
+    }
+
+    fn info(&self, message: String) -> PyResult<()> {
+        return self.log(message, "info".to_string());
+    }
+
+    fn warning(&self, message: String) -> PyResult<()> {
+        return self.log(message, "warning".to_string());
+    }
+
+    fn error(&self, message: String) -> PyResult<()> {
+        return self.log(message, "error".to_string());
+    }
 }
 
 #[pyfunction]
-fn get_level(level: String) -> PyResult<u8> {
+fn level_for(level: String) -> PyResult<u8> {
     match LogLevels::py_from_str(&level) {
         Ok(v) => Ok(v as u8),
-        Err(v) => return Err(v)
+        Err(v) => return Err(v),
     }
 }
 
 #[pymodule]
 fn nalog(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    m.add_wrapped(wrap_pyfunction!(get_level))?;
+    m.add_wrapped(wrap_pyfunction!(level_for))?;
     m.add_class::<Logger>()?;
     Ok(())
 }
